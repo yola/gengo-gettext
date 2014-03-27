@@ -1,0 +1,3 @@
+gengo==0.1.13
+polib==1.0.4
+yoconfigurator==0.4.3
