@@ -40,7 +40,7 @@ def create_job(lang, text):
     """
     if cache.Job.find(text, lang):
         if DEBUG:
-            print "Skipping..."
+            print 'Skipping...'
         return
 
     job = {
@@ -57,12 +57,12 @@ def create_jobs(locale_dir, langs, domain):
     for lang in langs:
         filename = po_file(locale_dir, lang, domain)
         if DEBUG:
-            print "Processing %s" % filename
+            print 'Processing %s' % filename
         if not os.path.exists(filename):
-            print "Missing PO file: %s" % filename
+            print 'Missing PO file: %s' % filename
             continue
         po = polib.pofile(filename)
-        sys.stdout.write("Creating Jobs...")
+        print 'Creating jobs',
         sys.stdout.flush()
         for entry in po:
             if not entry.msgstr:
@@ -72,18 +72,21 @@ def create_jobs(locale_dir, langs, domain):
                 sys.stdout.write('.')
                 sys.stdout.flush()
 
-        sys.stdout.write("\n")
-        sys.stdout.flush()
-
-    # TODO: Wait until all jobs have appeared in the API, or we could
-    # accidentally re-submit them.
+        print
 
 
 def post_jobs(jobs):
     """Post job, fails if too expensive."""
-    print "Posting Jobs..."
-    response = gengo.postTranslationJobs(jobs=jobs)
-    print response
+    print 'Posting Jobs...'
+    r = gengo.postTranslationJobs(jobs=jobs)
+    order_id = r['response']['order_id']
+    print 'Cost: %(currency)s %(credits_used)s' % r['response']
+
+    # Wait for the jobs to be available in the API
+    while True:
+        r = gengo.getTranslationOrderJobs(id=order_id)
+        if int(r['response']['order']['jobs_queued']) == 0:
+            break
 
 
 def get_submitted_strings():
@@ -108,12 +111,13 @@ def update_db():
     orders = {}
     if r['response']:
         for job_data in r['response']['jobs']:
-            job = cache.Job(id=job_data['job_id'],
-                            order_id=job_data['order_id'],
-                            string=job_data['body_src'],
-                            language=job_data['lc_tgt'],
-                            status=job_data['status'],
-                           )
+            job = cache.Job(
+                id=job_data['job_id'],
+                order_id=job_data['order_id'],
+                string=job_data['body_src'],
+                language=job_data['lc_tgt'],
+                status=job_data['status'],
+            )
             job.save()
             orders[job_data['order_id']] = job_data['ctime']
 
