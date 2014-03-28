@@ -5,15 +5,18 @@ import argparse
 import json
 import os
 import sys
+import time
 
 from gengo import Gengo
 import polib
 from yoconfigurator.base import read_config
 
-import cache
+from orm import Job, Order
 
 
 DEBUG = False
+MAX_COST = 20
+
 PROJECT_ROOT = os.path.dirname(os.path.realpath(__file__))
 config = read_config(PROJECT_ROOT)['gengo-gettext']
 
@@ -38,7 +41,7 @@ def create_job(lang, text):
     http://developers.gengo.com/client_libraries/
 
     """
-    if cache.Job.find(text, lang):
+    if Job.find(lang, text):
         if DEBUG:
             print 'Skipping...'
         return
@@ -71,39 +74,44 @@ def create_jobs(locale_dir, langs, domain):
                     yield job
                 sys.stdout.write('.')
                 sys.stdout.flush()
-
         print
 
 
+def quote_jobs(jobs):
+    job_dict = dict(enumerate(jobs))
+    r = gengo.determineTranslationCost(jobs=job_dict)
+    currency = None
+    credits = 0
+    for job in r['response']['jobs']:
+        currency = job['currency']
+        credits += job['credits']
+    print 'Cost: %s %0.2f' % (currency, credits)
+    return credits
+
+
 def post_jobs(jobs):
-    """Post job, fails if too expensive."""
     print 'Posting Jobs...'
     r = gengo.postTranslationJobs(jobs=jobs)
     order_id = r['response']['order_id']
-    print 'Cost: %(currency)s %(credits_used)s' % r['response']
 
-    # Wait for the jobs to be available in the API
+    if DEBUG:
+        print 'Waiting for the jobs to be available in the API...'
     while True:
         r = gengo.getTranslationOrderJobs(id=order_id)
         if int(r['response']['order']['jobs_queued']) == 0:
             break
+        time.sleep(1)
 
-
-def get_submitted_strings():
-    """TODO."""
-    # get all job ids: getTranslationJobs(count=200)
-    # going to run into issue with max count
-    # get all job details: gengo.getTranslationJobBatch(id="1,2,..200")
-    pass
+    update_db()
 
 
 def update_db():
-    latest_order = cache.latest_order()
+    print 'Updating known orders...'
+    latest_order = Order.get_latest()
     if not latest_order:
         r = gengo.getTranslationJobs(count=200)
     else:
-        r = gengo.getTranslationJobs(count=200,
-                                     timestamp_after=latest_order.created)
+        r = gengo.getTranslationJobs(timestamp_after=latest_order.created)
 
     job_ids = [job['job_id'] for job in r['response']]
     r = gengo.getTranslationJobBatch(id=','.join(job for job in job_ids))
@@ -111,21 +119,35 @@ def update_db():
     orders = {}
     if r['response']:
         for job_data in r['response']['jobs']:
-            job = cache.Job(
+            job = Job(
                 id=job_data['job_id'],
                 order_id=job_data['order_id'],
-                string=job_data['body_src'],
-                language=job_data['lc_tgt'],
+                lang=job_data['lc_tgt'],
+                source=job_data['body_src'],
+                translation=job_data.get('body_tgt', ''),
                 status=job_data['status'],
             )
             job.save()
             orders[job_data['order_id']] = job_data['ctime']
 
         for order_id, ctime in orders.iteritems():
-            order = cache.Order(id=order_id, created=ctime)
+            order = Order(id=order_id, created=ctime)
             order.save()
 
-    # TODO update statuses
+
+def update_statuses():
+    print 'Updating state of in-progress jobs...'
+    jobs = {}
+    for job in Job.get_in_progress():
+        jobs[job.id] = job
+
+    r = gengo.getTranslationJobBatch(id=','.join(str(id) for id in jobs))
+    if r['response']:
+        for job_data in r['response']['jobs']:
+            job = jobs[int(job_data['job_id'])]
+            job.status = job_data['status']
+            job.translation=job_data.get('body_tgt', '')
+            job.save()
 
 
 def main():
@@ -145,12 +167,15 @@ def main():
     DEBUG = args.verbose
 
     update_db()
+    update_statuses()
 
-    jobs = create_jobs(args.basedir, args.languages, args.domain)
+    jobs = list(create_jobs(args.basedir, args.languages, args.domain))
     if DEBUG:
-        jobs = list(jobs)
         print json.dumps(jobs, indent=2)
     if jobs:
+        if quote_jobs(jobs) > MAX_COST:
+            print "Too expensive, aborting"
+            sys.exit(1)
         post_jobs(jobs)
 
 if __name__ == '__main__':
