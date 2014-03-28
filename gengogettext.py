@@ -75,6 +75,9 @@ def create_jobs(locale_dir, langs, domain):
         sys.stdout.write("\n")
         sys.stdout.flush()
 
+    # TODO: Wait until all jobs have appeared in the API, or we could
+    # accidentally re-submit them.
+
 
 def post_jobs(jobs):
     """Post job, fails if too expensive."""
