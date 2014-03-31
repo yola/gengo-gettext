@@ -98,6 +98,10 @@ class Job(Table):
     def get_in_progress(cls):
         return cls.get_all_where("status NOT IN ('approved', 'canceled')")
 
+    @classmethod
+    def get_reviewable(cls):
+        return cls.get_all_where("status = 'reviewable'")
+
 
 class Order(Table):
     _columns = ('id', 'created')

@@ -32,30 +32,47 @@ def po_file(locale_dir, lang, domain):
     return os.path.join(locale_dir, lang, 'LC_MESSAGES', '%s.po' % domain)
 
 
-def create_job(lang, text):
-    """Create new gengo translation job.
-
-    Must take care, gengo allows duplicate submissions and charges for each.
-
-    Dev documentation:
-    http://developers.gengo.com/client_libraries/
-
+def check_entry(lang, entry):
     """
-    if Job.find(lang, text):
+    Check a POEntry. Yield a job if one needs to be created.
+    Update if there's a translation in our DB
+    """
+    # Translated
+    if entry.msgstr and 'fuzzy' not in entry.flags:
+        return
+
+    # Translation in progress
+    job = Job.find(lang, entry.msgid)
+    if job:
+        if job.status == 'approved':
+            entry.msgstr = job.translation
+            if 'fuzzy' in entry.flags:
+                entry.flags.remove('fuzzy')
         if DEBUG:
             print 'Skipping...'
         return
 
     job = {
-        'body_src': text,
+        'body_src': entry.msgid,
+        'comment': "[Standard Yola Description]\n"
+                   "Please leave <html> tags untranslated, but translate "
+                   "words <em>between them</em>. "
+                   "The 'html' and 'em' are left untranslated. "
+                   "%s or %(string_id)s is a place were something will be "
+                   "substituted. Don't translate 'string_id'. "
+                   "\n[End of Standard Yola Description]",
         'lc_src': 'en',
         'lc_tgt': lang,
         'tier': 'standard',
+        'purpose': 'Web localization',
     }
+    if entry.msgstr:
+        job['comment'] += ('\nFuzzy translation. Previous translation was:\n' +
+                           entry.msgstr)
     return job
 
 
-def create_jobs(locale_dir, langs, domain):
+def walk_domain(locale_dir, langs, domain):
     """Walk through all the langs in a text domain and return jobs"""
     for lang in langs:
         filename = po_file(locale_dir, lang, domain)
@@ -68,12 +85,12 @@ def create_jobs(locale_dir, langs, domain):
         print 'Creating jobs',
         sys.stdout.flush()
         for entry in po:
-            if not entry.msgstr:
-                job = create_job(lang, entry.msgid)
-                if job:
-                    yield job
-                sys.stdout.write('.')
-                sys.stdout.flush()
+            job = check_entry(lang, entry)
+            if job:
+                yield job
+            sys.stdout.write('.')
+            sys.stdout.flush()
+        po.save()
         print
 
 
@@ -150,6 +167,52 @@ def update_statuses():
             job.save()
 
 
+def review():
+    for job in Job.get_reviewable():
+        print 'Review reviewable translation:'
+        print 'en: %s' % job.source
+        print '%s: %s' % (job.lang, job.translation)
+        r = gengo.getTranslationJobComments(id=job.id)
+        for comment in r['response']['thread']:
+            comment['ctime_date'] = time.strftime(
+                '%Y-%m-%d %H:%M:%S UTC', time.gmtime(comment['ctime']))
+            print 'Comment: %(body)s  -- %(author)s %(ctime_date)s' % comment
+        while True:
+            action = raw_input('Action? [A]pprove, Approve with [C]omment, '
+                               '[R]evise, [S]kip:')
+            action = action.lower().strip()
+            if action == 'a':
+                gengo.updateTranslationJob(id=job.id,
+                                           action={'action': 'approve'})
+                break
+            elif action == 'c':
+                while True:
+                    try:
+                        rating = int(raw_input('Rating? (1-5):'))
+                    except ValueError:
+                        pass
+                    if 1 <= rating <= 5:
+                        break
+                    else:
+                        print 'Invalid rating'
+                comment = raw_input('Comment: ')
+                gengo.updateTranslationJob(id=job.id, action={
+                    'action': 'approve',
+                    'comment': comment,
+                    'rating': rating,
+                })
+                break
+            elif action == 'r':
+                comment = raw_input('Comment: ')
+                gengo.updateTranslationJob(id=job.id, action={
+                    'action': 'revise',
+                    'comment': comment,
+                })
+                break
+            elif action == 's':
+                break
+
+
 def main():
     global DEBUG
     p = argparse.ArgumentParser()
@@ -168,8 +231,9 @@ def main():
 
     update_db()
     update_statuses()
+    review()
 
-    jobs = list(create_jobs(args.basedir, args.languages, args.domain))
+    jobs = list(walk_domain(args.basedir, args.languages, args.domain))
     if DEBUG:
         print json.dumps(jobs, indent=2)
     if jobs:
