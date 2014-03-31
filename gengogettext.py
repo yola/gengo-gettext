@@ -146,7 +146,7 @@ def update_statuses():
         for job_data in r['response']['jobs']:
             job = jobs[int(job_data['job_id'])]
             job.status = job_data['status']
-            job.translation=job_data.get('body_tgt', '')
+            job.translation = job_data.get('body_tgt', '')
             job.save()
 
 
