@@ -1,7 +1,9 @@
 #!/usr/bin/env python
+# coding: UTF-8
 """Gengo gettext."""
 
 import argparse
+import ConfigParser
 import json
 import os
 import sys
@@ -15,7 +17,7 @@ from orm import Job, Order
 
 
 DEBUG = False
-MAX_COST = 20
+MAX_COST = 100
 
 PROJECT_ROOT = os.path.dirname(os.path.realpath(__file__))
 config = read_config(PROJECT_ROOT)['gengo-gettext']
@@ -23,7 +25,7 @@ config = read_config(PROJECT_ROOT)['gengo-gettext']
 gengo = Gengo(
     public_key=str(config.gengo.public_key),
     private_key=str(config.gengo.private_key),
-    sandbox=True,
+    sandbox=config.gengo.sandbox,
 )
 
 
@@ -34,12 +36,12 @@ def po_file(locale_dir, lang, domain):
 
 def check_entry(lang, entry):
     """
-    Check a POEntry. Yield a job if one needs to be created.
+    Check a POEntry. Return a job if one needs to be created.
     Update if there's a translation in our DB
     """
     # Translated
     if entry.msgstr and 'fuzzy' not in entry.flags:
-        return
+        return 'ok', None
 
     # Translation in progress
     job = Job.find(lang, entry.msgid)
@@ -50,7 +52,7 @@ def check_entry(lang, entry):
                 entry.flags.remove('fuzzy')
         if DEBUG:
             print 'Skipping...'
-        return
+        return 'updated', None
 
     job = {
         'body_src': entry.msgid,
@@ -66,32 +68,38 @@ def check_entry(lang, entry):
         'tier': 'standard',
         'purpose': 'Web localization',
     }
+    if lang == 'nb':
+        job['lc_tgt'] = 'no'
+        job['comment'] += u'\nBokmål'
     if entry.msgstr:
         job['comment'] += ('\nFuzzy translation. Previous translation was:\n' +
                            entry.msgstr)
-    return job
+    return 'job', job
 
 
-def walk_domain(locale_dir, langs, domain):
-    """Walk through all the langs in a text domain and return jobs"""
-    for lang in langs:
-        filename = po_file(locale_dir, lang, domain)
-        if DEBUG:
-            print 'Processing %s' % filename
-        if not os.path.exists(filename):
-            print 'Missing PO file: %s' % filename
-            continue
-        po = polib.pofile(filename)
-        print 'Creating jobs',
+def walk_po_file(locale_dir, lang, domain):
+    """Walk through a po file and yield any jobs that need to be submitted"""
+    filename = po_file(locale_dir, lang, domain)
+    if DEBUG:
+        print 'Processing %s' % filename
+    if not os.path.exists(filename):
+        print 'Missing PO file: %s' % filename
+        return
+    po = polib.pofile(filename)
+    updated = False
+    print 'Creating jobs',
+    sys.stdout.flush()
+    for entry in po:
+        action, job = check_entry(lang, entry)
+        if job:
+            yield job
+        if action == 'updated':
+            updated = True
+        sys.stdout.write('.')
         sys.stdout.flush()
-        for entry in po:
-            job = check_entry(lang, entry)
-            if job:
-                yield job
-            sys.stdout.write('.')
-            sys.stdout.flush()
+    if updated:
         po.save()
-        print
+    print
 
 
 def quote_jobs(jobs):
@@ -136,10 +144,13 @@ def update_db():
     orders = {}
     if r['response']:
         for job_data in r['response']['jobs']:
+            lang = job_data['lc_tgt']
+            if lang == 'no':
+                lang = 'nb'
             job = Job(
                 id=job_data['job_id'],
                 order_id=job_data['order_id'],
-                lang=job_data['lc_tgt'],
+                lang=lang,
                 source=job_data['body_src'],
                 translation=job_data.get('body_tgt', ''),
                 status=job_data['status'],
@@ -216,24 +227,37 @@ def review():
 def main():
     global DEBUG
     p = argparse.ArgumentParser()
-    p.add_argument('-b', '--basedir',
-                   help='Base directory (containing language sub-directories)')
-    p.add_argument('-l', '--langugage', action='append', dest='languages',
-                   help='Language to translate to. '
-                        'Can be specified multiple times')
-    p.add_argument('-d', '--domain', default='messages',
-                   help='Gettext domain (default: messages)')
+    p.add_argument('-p', '--project', action='append', dest='projects',
+                   help='Only look at the specified projects. '
+                         'Can be repeated. Default: all')
+    p.add_argument('-l', '--language', action='append', dest='languages',
+                   help='Only look at the specified languages. '
+                         'Can be repeated. Default: all')
+    p.add_argument('-c', '--config', type=file, default='projects.ini',
+                   help='Configuration file (default: projects.ini)')
     p.add_argument('-v', '--verbose', action='store_true',
                    help='Display debugging messages')
     args = p.parse_args()
 
+    config = ConfigParser.SafeConfigParser()
+    config.readfp(args.config)
+
     DEBUG = args.verbose
+
+    projects = args.projects or config.sections()
 
     update_db()
     update_statuses()
     review()
 
-    jobs = list(walk_domain(args.basedir, args.languages, args.domain))
+    jobs = []
+    for project in projects:
+        languages = args.languages or config.get(project, 'languages').split()
+        for domain in config.get(project, 'domains').split():
+            basedir = config.get(project, domain)
+            for language in languages:
+                jobs.extend(walk_po_file(basedir, language, domain))
+
     if DEBUG:
         print json.dumps(jobs, indent=2)
     if jobs:
