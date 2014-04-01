@@ -89,6 +89,7 @@ class Job(Table):
                 );""")
         cursor.execute(
             'CREATE INDEX job_lang_string ON job (lang, source);')
+        cursor.execute('CREATE INDEX job_status ON job (status);')
 
     @classmethod
     def find(cls, lang, source):
