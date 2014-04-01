@@ -18,15 +18,21 @@ from orm import Job, Order
 
 DEBUG = False
 MAX_COST = 100
+COMMENT = ''
+_gengo = None
 
-PROJECT_ROOT = os.path.dirname(os.path.realpath(__file__))
-config = read_config(PROJECT_ROOT)['gengo-gettext']
 
-gengo = Gengo(
-    public_key=str(config.gengo.public_key),
-    private_key=str(config.gengo.private_key),
-    sandbox=config.gengo.sandbox,
-)
+def gengo():
+    global _gengo
+    if not _gengo:
+        PROJECT_ROOT = os.path.dirname(os.path.realpath(__file__))
+        config = read_config(PROJECT_ROOT)['gengo-gettext']
+        _gengo = Gengo(
+            public_key=str(config.gengo.public_key),
+            private_key=str(config.gengo.private_key),
+            sandbox=config.gengo.sandbox,
+        )
+    return _gengo
 
 
 def po_file(locale_dir, lang, domain):
@@ -56,13 +62,7 @@ def check_entry(lang, entry):
 
     job = {
         'body_src': entry.msgid,
-        'comment': "[Standard Yola Description]\n"
-                   "Please leave <html> tags untranslated, but translate "
-                   "words <em>between them</em>. "
-                   "The 'html' and 'em' are left untranslated. "
-                   "%s or %(string_id)s is a place were something will be "
-                   "substituted. Don't translate 'string_id'. "
-                   "\n[End of Standard Yola Description]",
+        'comment': COMMENT,
         'lc_src': 'en',
         'lc_tgt': lang,
         'tier': 'standard',
@@ -70,7 +70,7 @@ def check_entry(lang, entry):
     }
     if lang == 'nb':
         job['lc_tgt'] = 'no'
-        job['comment'] += u'\nBokmål'
+        job['comment'] += u'\nNorwegian Bokmål'
     if entry.msgstr:
         job['comment'] += ('\nFuzzy translation. Previous translation was:\n' +
                            entry.msgstr)
@@ -104,7 +104,7 @@ def walk_po_file(locale_dir, lang, domain):
 
 def quote_jobs(jobs):
     job_dict = dict(enumerate(jobs))
-    r = gengo.determineTranslationCost(jobs=job_dict)
+    r = gengo().determineTranslationCost(jobs=job_dict)
     currency = None
     credits = 0
     for job in r['response']['jobs']:
@@ -118,7 +118,7 @@ def post_jobs(jobs):
     print 'Posting Jobs...'
     ctime = time.time()
 
-    r = gengo.postTranslationJobs(jobs=jobs)
+    r = gengo().postTranslationJobs(jobs=jobs)
     order_id = r['response']['order_id']
 
     Order(id=order_id, created=ctime).save()
@@ -126,7 +126,7 @@ def post_jobs(jobs):
     if DEBUG:
         print 'Waiting for the jobs to be available in the API...'
     while True:
-        r = gengo.getTranslationOrderJobs(id=order_id)
+        r = gengo().getTranslationOrderJobs(id=order_id)
         if int(r['response']['order']['jobs_queued']) == 0:
             break
         time.sleep(1)
@@ -148,14 +148,14 @@ def update_db():
     print 'Updating known orders...'
     latest_order = Order.get_latest()
     if not latest_order:
-        r = gengo.getTranslationJobs(count=200)
+        r = gengo().getTranslationJobs(count=200)
     else:
         # This is actually the latest 200 after N, which is a bit useless
-        r = gengo.getTranslationJobs(timestamp_after=latest_order.created,
-                                     count=200)
+        r = gengo().getTranslationJobs(timestamp_after=latest_order.created,
+                                       count=200)
 
     job_ids = [job['job_id'] for job in r['response']]
-    r = gengo.getTranslationJobBatch(id=','.join(job for job in job_ids))
+    r = gengo().getTranslationJobBatch(id=','.join(job for job in job_ids))
 
     orders = {}
     if r['response']:
@@ -185,7 +185,7 @@ def update_statuses():
     for job in Job.get_in_progress():
         jobs[job.id] = job
 
-    r = gengo.getTranslationJobBatch(id=','.join(str(id) for id in jobs))
+    r = gengo().getTranslationJobBatch(id=','.join(str(id) for id in jobs))
     if r['response']:
         for job_data in r['response']['jobs']:
             job = jobs[int(job_data['job_id'])]
@@ -203,7 +203,7 @@ def review():
         print 'Review reviewable translation:'
         print 'en: %s' % job.source
         print '%s: %s' % (job.lang, job.translation)
-        r = gengo.getTranslationJobComments(id=job.id)
+        r = gengo().getTranslationJobComments(id=job.id)
         for comment in r['response']['thread']:
             comment['ctime_date'] = time.strftime(
                 '%Y-%m-%d %H:%M:%S UTC', time.gmtime(comment['ctime']))
@@ -213,8 +213,8 @@ def review():
                                '[R]evise, [S]kip:')
             action = action.lower().strip()
             if action == 'a':
-                gengo.updateTranslationJob(id=job.id,
-                                           action={'action': 'approve'})
+                gengo().updateTranslationJob(id=job.id,
+                                             action={'action': 'approve'})
                 break
             elif action == 'c':
                 while True:
@@ -227,7 +227,7 @@ def review():
                     else:
                         print 'Invalid rating'
                 comment = raw_input('Comment: ')
-                gengo.updateTranslationJob(id=job.id, action={
+                gengo().updateTranslationJob(id=job.id, action={
                     'action': 'approve',
                     'comment': comment,
                     'rating': rating,
@@ -235,7 +235,7 @@ def review():
                 break
             elif action == 'r':
                 comment = raw_input('Comment: ')
-                gengo.updateTranslationJob(id=job.id, action={
+                gengo().updateTranslationJob(id=job.id, action={
                     'action': 'revise',
                     'comment': comment,
                 })
@@ -245,7 +245,7 @@ def review():
 
 
 def main():
-    global DEBUG
+    global DEBUG, MAX_CONT, COMMENT
     p = argparse.ArgumentParser()
     p.add_argument('-p', '--project', action='append', dest='projects',
                    help='Only look at the specified projects. '
@@ -265,6 +265,11 @@ def main():
     DEBUG = args.verbose
 
     projects = args.projects or config.sections()
+    if 'GLOBAL' in projects:
+        projects.remove('GLOBAL')
+
+    COMMENT = config.get('GLOBAL', 'comment')
+    MAX_COST = config.getint('GLOBAL', 'max_cost')
 
     #update_db()
     update_statuses()
