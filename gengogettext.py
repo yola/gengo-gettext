@@ -116,8 +116,12 @@ def quote_jobs(jobs):
 
 def post_jobs(jobs):
     print 'Posting Jobs...'
+    ctime = time.time()
+
     r = gengo.postTranslationJobs(jobs=jobs)
     order_id = r['response']['order_id']
+
+    Order(id=order_id, created=ctime).save()
 
     if DEBUG:
         print 'Waiting for the jobs to be available in the API...'
@@ -127,7 +131,17 @@ def post_jobs(jobs):
             break
         time.sleep(1)
 
-    update_db()
+    for job in r['response']['order']['jobs_available']:
+        Job(
+            id=job,
+            order_id=order_id,
+            lang=None,
+            source=None,
+            translation=None,
+            status='queued'
+        ).save()
+
+    update_statuses()
 
 
 def update_db():
@@ -136,7 +150,9 @@ def update_db():
     if not latest_order:
         r = gengo.getTranslationJobs(count=200)
     else:
-        r = gengo.getTranslationJobs(timestamp_after=latest_order.created)
+        # This is actually the latest 200 after N, which is a bit useless
+        r = gengo.getTranslationJobs(timestamp_after=latest_order.created,
+                                     count=200)
 
     job_ids = [job['job_id'] for job in r['response']]
     r = gengo.getTranslationJobBatch(id=','.join(job for job in job_ids))
@@ -174,7 +190,11 @@ def update_statuses():
         for job_data in r['response']['jobs']:
             job = jobs[int(job_data['job_id'])]
             job.status = job_data['status']
+            job.source = job_data['body_src']
             job.translation = job_data.get('body_tgt', '')
+            job.lang = job_data['lc_tgt']
+            if job.lang == 'no':
+                job.lang = 'nb'
             job.save()
 
 
@@ -246,7 +266,7 @@ def main():
 
     projects = args.projects or config.sections()
 
-    update_db()
+    #update_db()
     update_statuses()
     review()
 
@@ -265,6 +285,7 @@ def main():
             print "Too expensive, aborting"
             sys.exit(1)
         post_jobs(jobs)
+
 
 if __name__ == '__main__':
     main()
