@@ -52,13 +52,14 @@ def check_entry(lang, entry):
     # Translation in progress
     job = Job.find(lang, entry.msgid)
     if job:
+        if DEBUG:
+            print 'Skipping...'
         if job.status == 'approved':
             entry.msgstr = job.translation
             if 'fuzzy' in entry.flags:
                 entry.flags.remove('fuzzy')
-        if DEBUG:
-            print 'Skipping...'
-        return 'updated', None
+            return 'updated', None
+        return 'waiting', None
 
     job = {
         'body_src': entry.msgid,
