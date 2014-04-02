@@ -201,19 +201,22 @@ def update_statuses():
 
 def review():
     for job in Job.get_reviewable():
-        print 'Review reviewable translation:'
-        print 'en: %s' % job.source
-        print '%s: %s' % (job.lang, job.translation)
+        print '\nReview reviewable translation:'
+        print '===== en ====='
+        print job.source
+        print '===== %s =====' % job.lang
+        print job.translation
+        print '=============='
         r = gengo().getTranslationJobComments(id=job.id)
-        for comment in r['response']['thread']:
+        for comment in r['response']['thread'][1:]:
             comment['ctime_date'] = time.strftime(
                 '%Y-%m-%d %H:%M:%S UTC', time.gmtime(comment['ctime']))
             print 'Comment: %(body)s  -- %(author)s %(ctime_date)s' % comment
         while True:
             action = raw_input('Action? [A]pprove, Approve with [C]omment, '
-                               '[R]evise, [S]kip:')
+                               '[R]evise, [S]kip: ')
             action = action.lower().strip()
-            if action == 'a':
+            if action == 'a' or action == '':
                 gengo().updateTranslationJob(id=job.id,
                                              action={'action': 'approve'})
                 break

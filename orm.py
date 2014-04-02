@@ -101,7 +101,7 @@ class Job(Table):
 
     @classmethod
     def get_reviewable(cls):
-        return cls.get_all_where("status = 'reviewable'")
+        return cls.get_all_where("status = 'reviewable' ORDER BY lang, id")
 
 
 class Order(Table):
