@@ -204,8 +204,12 @@ def review():
         print '\nReview reviewable translation:'
         print '===== en ====='
         print job.source
+        if job.source.endswith(' '):
+            print '[ trailing space ]'
         print '===== %s =====' % job.lang
         print job.translation
+        if job.translation.endswith(' '):
+            print '[ trailing space ]'
         print '=============='
         r = gengo().getTranslationJobComments(id=job.id)
         for comment in r['response']['thread'][1:]:
