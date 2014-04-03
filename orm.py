@@ -4,7 +4,7 @@ import sqlite3
 
 
 db = None
-
+DB_NAME = None
 
 @functools.total_ordering
 class Table(object):
@@ -120,10 +120,10 @@ class Order(Table):
 
 
 def get_db():
-    global db
+    global db, DB_NAME
     if not db:
-        create_tables = not os.path.exists('jobs.db')
-        db = sqlite3.connect('jobs.db')
+        create_tables = not os.path.exists(DB_NAME)
+        db = sqlite3.connect(DB_NAME)
         if create_tables:
             c = db.cursor()
             Order.create_table(c)
