@@ -252,8 +252,8 @@ def review():
                 break
 
 
-def main():
     global DEBUG, MAX_CONT, COMMENT
+def main(**kwargs):
     p = argparse.ArgumentParser()
     p.add_argument('-p', '--project', action='append', dest='projects',
                    help='Only look at the specified projects. '
@@ -265,6 +265,7 @@ def main():
                    help='Configuration file (default: projects.ini)')
     p.add_argument('-v', '--verbose', action='store_true',
                    help='Display debugging messages')
+    p.set_defaults(**kwargs)
     args = p.parse_args()
 
     config = ConfigParser.SafeConfigParser()
