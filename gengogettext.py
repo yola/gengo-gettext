@@ -13,6 +13,7 @@ from gengo import Gengo
 import polib
 from yoconfigurator.base import read_config
 
+import orm
 from orm import Job, Order
 
 
@@ -252,8 +253,8 @@ def review():
                 break
 
 
-def main():
-    global DEBUG, MAX_CONT, COMMENT
+def main(**kwargs):
+    global DEBUG, MAX_CONT, COMMENT, DB_NAME
     p = argparse.ArgumentParser()
     p.add_argument('-p', '--project', action='append', dest='projects',
                    help='Only look at the specified projects. '
@@ -265,12 +266,16 @@ def main():
                    help='Configuration file (default: projects.ini)')
     p.add_argument('-v', '--verbose', action='store_true',
                    help='Display debugging messages')
+    p.add_argument('-d', '--database', default='jobs.db',
+                   help='Local jobs database (default: jobs.db)')
+    p.set_defaults(**kwargs)
     args = p.parse_args()
 
     config = ConfigParser.SafeConfigParser()
     config.readfp(args.config)
 
     DEBUG = args.verbose
+    orm.DB_NAME = args.database
 
     projects = args.projects or config.sections()
     if 'GLOBAL' in projects:
