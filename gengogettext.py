@@ -158,27 +158,28 @@ def update_db():
 
     job_ids = [job['job_id'] for job in r['response']]
     r = gengo().getTranslationJobBatch(id=','.join(job for job in job_ids))
+    if not r['response']:
+        return
 
     orders = {}
-    if r['response']:
-        for job_data in r['response']['jobs']:
-            lang = job_data['lc_tgt']
-            if lang == 'no':
-                lang = 'nb'
-            job = Job(
-                id=job_data['job_id'],
-                order_id=job_data['order_id'],
-                lang=lang,
-                source=job_data['body_src'],
-                translation=job_data.get('body_tgt', ''),
-                status=job_data['status'],
-            )
-            job.save()
-            orders[job_data['order_id']] = job_data['ctime']
+    for job_data in r['response']['jobs']:
+        lang = job_data['lc_tgt']
+        if lang == 'no':
+            lang = 'nb'
+        job = Job(
+            id=job_data['job_id'],
+            order_id=job_data['order_id'],
+            lang=lang,
+            source=job_data['body_src'],
+            translation=job_data.get('body_tgt', ''),
+            status=job_data['status'],
+        )
+        job.save()
+        orders[job_data['order_id']] = job_data['ctime']
 
-        for order_id, ctime in orders.iteritems():
-            order = Order(id=order_id, created=ctime)
-            order.save()
+    for order_id, ctime in orders.iteritems():
+        order = Order(id=order_id, created=ctime)
+        order.save()
 
 
 def update_statuses():
