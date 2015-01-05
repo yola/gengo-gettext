@@ -297,7 +297,7 @@ def main(**kwargs):
     COMMENT = config.get('GLOBAL', 'comment')
     MAX_COST = config.getint('GLOBAL', 'max_cost')
 
-    #update_db()
+    update_db()
     update_statuses()
     review()
 
