@@ -163,6 +163,8 @@ def update_db():
 
     orders = {}
     for job_data in r['response']['jobs']:
+        if Job.get_where('id = ?', (job_data['job_id'],)):
+            continue
         lang = job_data['lc_tgt']
         if lang == 'no':
             lang = 'nb'
