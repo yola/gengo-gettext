@@ -222,7 +222,7 @@ def review():
             print 'Comment: %(body)s  -- %(author)s %(ctime_date)s' % comment
         while True:
             action = raw_input('Action? [A]pprove, Approve with [C]omment, '
-                               '[R]evise, [S]kip: ')
+                               '[R]evise, [S]trip and Approve, S[k]ip: ')
             action = action.lower().strip()
             if action == 'a' or action == '':
                 gengo().updateTranslationJob(id=job.id,
@@ -252,7 +252,14 @@ def review():
                     'comment': comment,
                 })
                 break
-            elif action == 's':
+            if action == 's':
+                gengo().updateTranslationJob(id=job.id,
+                                             action={'action': 'approve'})
+                job.translation = job.translation.strip()
+                job.status = 'approved'
+                job.save()
+                break
+            elif action == 'k':
                 break
 
 
