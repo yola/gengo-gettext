@@ -204,8 +204,8 @@ def update_statuses():
 
 
 def review():
-    for job in Job.get_reviewable():
-        print '\nReview reviewable translation:'
+    for job in list(Job.get_reviewable()):
+        print '\nReview reviewable translation:', job.id
         print '===== en ====='
         print job.source
         if job.source.endswith(' '):
