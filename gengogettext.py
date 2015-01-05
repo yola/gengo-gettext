@@ -92,6 +92,8 @@ def walk_po_file(locale_dir, lang, domain):
     print 'Creating jobs',
     sys.stdout.flush()
     for entry in po:
+        if entry.obsolete:
+            continue
         action, job = check_entry(lang, entry)
         if job:
             yield job
