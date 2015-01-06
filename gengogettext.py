@@ -221,7 +221,26 @@ def update_statuses():
 
 
 def check_translation(job):
-    return True
+    passed = True
+    # Check that some strings, if present in the source, are present,
+    # identically, in the translation
+    for regex, message in (
+        (r'<.*?>', 'HTML tags'),
+        (r'%(?:\([a-zA-Z0-9_]+\))[#0 +-]?[0-9*]?\.?[0-9]?[diouxXeEfFgGcrs]',
+         'Python interpolation'),
+        (r'{[a-z0-9_]*(?:![rs])?'
+         r'(?::(?:.?[<>=^])?[ +-]?#?0?[0-9]*,?(?:\.[0-9]+)?'
+         r'[bcdeEfFgGnosxX%]?)?}', 'Python format string'),
+        (r'%%', 'Escaped percent symbol'),
+        (r'&[a-z]+;', 'HTML entity'),
+    ):
+        source_matches = set(re.findall(regex, job.source))
+        translation_matches = set(re.findall(regex, job.translation))
+        if source_matches != translation_matches:
+            print "Differing %s" % message
+            passed = False
+
+    return passed
 
 
 def fix_translation(job):
