@@ -257,67 +257,76 @@ def fix_translation(job):
 
 def review():
     for job in list(Job.get_reviewable()):
-        auto_fixes = fix_translation(job)
+        fix_translation(job)
         auto_checks = check_translation(job)
-        print '\nReview reviewable translation:', job.id
-        if not auto_checks:
-            print "FAILED CHECKS"
-        if auto_fixes:
-            print "Cleaned up whitespace"
-        print '===== en ====='
-        print job.source
-        print '===== %s =====' % job.lang
-        print job.translation
-        print '=============='
-        r = gengo().getTranslationJobComments(id=job.id)
-        for comment in r['response']['thread'][1:]:
-            comment['ctime_date'] = time.strftime(
-                '%Y-%m-%d %H:%M:%S UTC', time.gmtime(comment['ctime']))
-            print 'Comment: %(body)s  -- %(author)s %(ctime_date)s' % comment
-        while True:
-            action = raw_input('Action? [A]pprove, Approve with [C]omment, '
-                               '[R]evise, [S]trip and Approve, S[k]ip: ')
-            action = action.lower().strip()
-            if action == 'a' or action == '':
-                try:
-                    gengo().updateTranslationJob(id=job.id,
-                                                 action={'action': 'approve'})
-                except GengoError as e:
-                    print e
-                break
-            elif action == 'c':
-                while True:
-                    try:
-                        rating = int(raw_input('Rating? (1-5):'))
-                    except ValueError:
-                        pass
-                    if 1 <= rating <= 5:
-                        break
-                    else:
-                        print 'Invalid rating'
-                comment = raw_input('Comment: ')
-                gengo().updateTranslationJob(id=job.id, action={
-                    'action': 'approve',
-                    'comment': comment,
-                    'rating': rating,
-                })
-                break
-            elif action == 'r':
-                comment = raw_input('Comment: ')
-                gengo().updateTranslationJob(id=job.id, action={
-                    'action': 'revise',
-                    'comment': comment,
-                })
-                break
-            if action == 's':
+
+        if auto_checks:
+            try:
                 gengo().updateTranslationJob(id=job.id,
                                              action={'action': 'approve'})
-                job.translation = job.translation.strip()
-                job.status = 'approved'
-                job.save()
-                break
-            elif action == 'k':
-                break
+            except GengoError as e:
+                print e
+            break
+        else:
+            manual_review(job)
+
+
+def manual_review(job):
+    print '\nReview reviewable translation:', job.id
+    print '===== en ====='
+    print job.source
+    print '===== %s =====' % job.lang
+    print job.translation
+    print '=============='
+    r = gengo().getTranslationJobComments(id=job.id)
+    for comment in r['response']['thread'][1:]:
+        comment['ctime_date'] = time.strftime(
+            '%Y-%m-%d %H:%M:%S UTC', time.gmtime(comment['ctime']))
+        print 'Comment: %(body)s  -- %(author)s %(ctime_date)s' % comment
+    while True:
+        action = raw_input('Action? [A]pprove, Approve with [C]omment, '
+                           '[R]evise, [S]trip and Approve, S[k]ip: ')
+        action = action.lower().strip()
+        if action == 'a' or action == '':
+            try:
+                gengo().updateTranslationJob(id=job.id,
+                                             action={'action': 'approve'})
+            except GengoError as e:
+                print e
+            break
+        elif action == 'c':
+            while True:
+                try:
+                    rating = int(raw_input('Rating? (1-5):'))
+                except ValueError:
+                    pass
+                if 1 <= rating <= 5:
+                    break
+                else:
+                    print 'Invalid rating'
+            comment = raw_input('Comment: ')
+            gengo().updateTranslationJob(id=job.id, action={
+                'action': 'approve',
+                'comment': comment,
+                'rating': rating,
+            })
+            break
+        elif action == 'r':
+            comment = raw_input('Comment: ')
+            gengo().updateTranslationJob(id=job.id, action={
+                'action': 'revise',
+                'comment': comment,
+            })
+            break
+        if action == 's':
+            gengo().updateTranslationJob(id=job.id,
+                                         action={'action': 'approve'})
+            job.translation = job.translation.strip()
+            job.status = 'approved'
+            job.save()
+            break
+        elif action == 'k':
+            break
 
 
 def main(**kwargs):
