@@ -271,7 +271,6 @@ def review():
                                              action={'action': 'approve'})
             except GengoError as e:
                 print e
-            break
         else:
             manual_review(job)
 
