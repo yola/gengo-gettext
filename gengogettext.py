@@ -4,8 +4,10 @@
 
 import argparse
 import ConfigParser
+import itertools
 import json
 import os
+import re
 import sys
 import time
 
@@ -186,14 +188,22 @@ def update_db():
         order.save()
 
 
+def grouper(iterable, n, fillvalue=None):
+    "Collect data into fixed-length chunks or blocks"
+    # grouper('ABCDEFG', 3, 'x') --> ABC DEF Gxx
+    args = [iter(iterable)] * n
+    return itertools.izip_longest(fillvalue=fillvalue, *args)
+
+
 def update_statuses():
     print 'Updating state of in-progress jobs...'
-    jobs = {}
-    for job in Job.get_in_progress():
-        jobs[job.id] = job
+    for batch in grouper(Job.get_in_progress(), 100):
+        jobs = {}
+        for job in batch:
+            if job:
+                jobs[job.id] = job
 
-    r = gengo().getTranslationJobBatch(id=','.join(str(id) for id in jobs))
-    if r['response']:
+        r = gengo().getTranslationJobBatch(id=','.join(str(id) for id in jobs))
         for job_data in r['response']['jobs']:
             job = jobs[int(job_data['job_id'])]
             job.status = job_data['status']
@@ -205,67 +215,97 @@ def update_statuses():
             job.save()
 
 
+def check_translation(job):
+    passed = True
+
+    if not job.translation.strip():
+        print "Empty translation"
+        passed = False
+
+    # Check that some strings, if present in the source, are present,
+    # identically, in the translation
+    for regex, message in (
+        (r'<.*?>', 'HTML tags'),
+        (r'%(?:\([a-zA-Z0-9_]+\))[#0 +-]?[0-9*]?\.?[0-9]?[diouxXeEfFgGcrs]',
+         'Python interpolation'),
+        (r'{[a-z0-9_]*(?:![rs])?'
+         r'(?::(?:.?[<>=^])?[ +-]?#?0?[0-9]*,?(?:\.[0-9]+)?'
+         r'[bcdeEfFgGnosxX%]?)?}', 'Python format string'),
+        (r'%%', 'Escaped percent symbol'),
+        (r'&[a-z]+;', 'HTML entity'),
+    ):
+        source_matches = set(re.findall(regex, job.source))
+        translation_matches = set(re.findall(regex, job.translation))
+        if source_matches != translation_matches:
+            print "Differing %s" % message
+            passed = False
+
+    return passed
+
+
+def fix_translation(job):
+    # Auto-whitespace
+    m = re.match(r'^(\s*).*?(\s*)$', job.source, re.DOTALL)
+    translation = m.group(1) + job.translation.strip() + m.group(2)
+    if translation != job.translation:
+        job.translation = translation
+        job.save()
+        return True
+
+    return False
+
+
 def review():
     for job in list(Job.get_reviewable()):
-        print '\nReview reviewable translation:', job.id
-        print '===== en ====='
-        print job.source
-        if job.source.endswith(' '):
-            print '[ trailing space ]'
-        print '===== %s =====' % job.lang
-        print job.translation
-        if job.translation.endswith(' '):
-            print '[ trailing space ]'
-        print '=============='
-        r = gengo().getTranslationJobComments(id=job.id)
-        for comment in r['response']['thread'][1:]:
-            comment['ctime_date'] = time.strftime(
-                '%Y-%m-%d %H:%M:%S UTC', time.gmtime(comment['ctime']))
-            print 'Comment: %(body)s  -- %(author)s %(ctime_date)s' % comment
-        while True:
-            action = raw_input('Action? [A]pprove, Approve with [C]omment, '
-                               '[R]evise, [S]trip and Approve, S[k]ip: ')
-            action = action.lower().strip()
-            if action == 'a' or action == '':
-                try:
-                    gengo().updateTranslationJob(id=job.id,
-                                                 action={'action': 'approve'})
-                except GengoError as e:
-                    print e
-                break
-            elif action == 'c':
-                while True:
-                    try:
-                        rating = int(raw_input('Rating? (1-5):'))
-                    except ValueError:
-                        pass
-                    if 1 <= rating <= 5:
-                        break
-                    else:
-                        print 'Invalid rating'
-                comment = raw_input('Comment: ')
-                gengo().updateTranslationJob(id=job.id, action={
-                    'action': 'approve',
-                    'comment': comment,
-                    'rating': rating,
-                })
-                break
-            elif action == 'r':
-                comment = raw_input('Comment: ')
-                gengo().updateTranslationJob(id=job.id, action={
-                    'action': 'revise',
-                    'comment': comment,
-                })
-                break
-            if action == 's':
-                gengo().updateTranslationJob(id=job.id,
-                                             action={'action': 'approve'})
-                job.translation = job.translation.strip()
-                job.status = 'approved'
-                job.save()
-                break
-            elif action == 'k':
-                break
+        fix_translation(job)
+        auto_checks = check_translation(job)
+
+        if auto_checks:
+            approve(job)
+        else:
+            manual_review(job)
+
+
+def approve(job):
+    try:
+        gengo().updateTranslationJob(id=job.id,
+                                     action={'action': 'approve'})
+    except GengoError as e:
+        print e
+
+
+def revise(job):
+    comment = raw_input('Comment: ')
+    gengo().updateTranslationJob(id=job.id, action={
+        'action': 'revise',
+        'comment': comment,
+    })
+
+
+def manual_review(job):
+    print '\nReview reviewable translation:', job.id
+    print '===== en ====='
+    print job.source
+    print '===== %s =====' % job.lang
+    print job.translation
+    print '=============='
+    r = gengo().getTranslationJobComments(id=job.id)
+    for comment in r['response']['thread'][1:]:
+        comment['ctime_date'] = time.strftime(
+            '%Y-%m-%d %H:%M:%S UTC', time.gmtime(comment['ctime']))
+        print 'Comment: %(body)s  -- %(author)s %(ctime_date)s' % comment
+
+    while True:
+        action = raw_input('Action? [A]pprove, [R]evise, S[k]ip: ')
+        action = action.lower().strip()
+        if action == 'a' or action == '':
+            approve(job)
+            break
+        elif action == 'r':
+            revise(job)
+            break
+        elif action == 'k':
+            break
 
 
 def main(**kwargs):
