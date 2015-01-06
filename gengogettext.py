@@ -266,13 +266,25 @@ def review():
         auto_checks = check_translation(job)
 
         if auto_checks:
-            try:
-                gengo().updateTranslationJob(id=job.id,
-                                             action={'action': 'approve'})
-            except GengoError as e:
-                print e
+            approve(job)
         else:
             manual_review(job)
+
+
+def approve(job):
+    try:
+        gengo().updateTranslationJob(id=job.id,
+                                     action={'action': 'approve'})
+    except GengoError as e:
+        print e
+
+
+def revise(job):
+    comment = raw_input('Comment: ')
+    gengo().updateTranslationJob(id=job.id, action={
+        'action': 'revise',
+        'comment': comment,
+    })
 
 
 def manual_review(job):
@@ -287,16 +299,13 @@ def manual_review(job):
         comment['ctime_date'] = time.strftime(
             '%Y-%m-%d %H:%M:%S UTC', time.gmtime(comment['ctime']))
         print 'Comment: %(body)s  -- %(author)s %(ctime_date)s' % comment
+
     while True:
         action = raw_input('Action? [A]pprove, Approve with [C]omment, '
                            '[R]evise, [S]trip and Approve, S[k]ip: ')
         action = action.lower().strip()
         if action == 'a' or action == '':
-            try:
-                gengo().updateTranslationJob(id=job.id,
-                                             action={'action': 'approve'})
-            except GengoError as e:
-                print e
+            approve(job)
             break
         elif action == 'c':
             while True:
@@ -316,11 +325,7 @@ def manual_review(job):
             })
             break
         elif action == 'r':
-            comment = raw_input('Comment: ')
-            gengo().updateTranslationJob(id=job.id, action={
-                'action': 'revise',
-                'comment': comment,
-            })
+            revise(job)
             break
         if action == 's':
             gengo().updateTranslationJob(id=job.id,
