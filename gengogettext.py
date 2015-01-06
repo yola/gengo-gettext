@@ -203,21 +203,16 @@ def update_statuses():
             if job:
                 jobs[job.id] = job
 
-        try:
-            r = gengo().getTranslationJobBatch(id=','.join(str(id) for id in jobs))
-        except ValueError:
-            print jobs.keys()
-            raise
-        if r['response']:
-            for job_data in r['response']['jobs']:
-                job = jobs[int(job_data['job_id'])]
-                job.status = job_data['status']
-                job.source = job_data['body_src']
-                job.translation = job_data.get('body_tgt', '')
-                job.lang = job_data['lc_tgt']
-                if job.lang == 'no':
-                    job.lang = 'nb'
-                job.save()
+        r = gengo().getTranslationJobBatch(id=','.join(str(id) for id in jobs))
+        for job_data in r['response']['jobs']:
+            job = jobs[int(job_data['job_id'])]
+            job.status = job_data['status']
+            job.source = job_data['body_src']
+            job.translation = job_data.get('body_tgt', '')
+            job.lang = job_data['lc_tgt']
+            if job.lang == 'no':
+                job.lang = 'nb'
+            job.save()
 
 
 def check_translation(job):
