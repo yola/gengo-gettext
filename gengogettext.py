@@ -6,6 +6,7 @@ import argparse
 import ConfigParser
 import json
 import os
+import re
 import sys
 import time
 
@@ -205,17 +206,35 @@ def update_statuses():
             job.save()
 
 
+def check_translation(job):
+    return True
+
+
+def fix_translation(job):
+    # Auto-whitespace
+    m = re.match(r'^(\s*).*?(\s*)$', job.source, re.DOTALL)
+    translation = m.group(1) + job.translation.strip() + m.group(2)
+    if translation != job.translation:
+        job.translation = translation
+        job.save()
+        return True
+
+    return False
+
+
 def review():
     for job in list(Job.get_reviewable()):
+        auto_fixes = fix_translation(job)
+        auto_checks = check_translation(job)
         print '\nReview reviewable translation:', job.id
+        if not auto_checks:
+            print "FAILED CHECKS"
+        if auto_fixes:
+            print "Cleaned up whitespace"
         print '===== en ====='
         print job.source
-        if job.source.endswith(' '):
-            print '[ trailing space ]'
         print '===== %s =====' % job.lang
         print job.translation
-        if job.translation.endswith(' '):
-            print '[ trailing space ]'
         print '=============='
         r = gengo().getTranslationJobComments(id=job.id)
         for comment in r['response']['thread'][1:]:
