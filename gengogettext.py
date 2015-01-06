@@ -4,6 +4,7 @@
 
 import argparse
 import ConfigParser
+import itertools
 import json
 import os
 import re
@@ -187,23 +188,36 @@ def update_db():
         order.save()
 
 
+def grouper(iterable, n, fillvalue=None):
+    "Collect data into fixed-length chunks or blocks"
+    # grouper('ABCDEFG', 3, 'x') --> ABC DEF Gxx
+    args = [iter(iterable)] * n
+    return itertools.izip_longest(fillvalue=fillvalue, *args)
+
+
 def update_statuses():
     print 'Updating state of in-progress jobs...'
-    jobs = {}
-    for job in Job.get_in_progress():
-        jobs[job.id] = job
+    for batch in grouper(Job.get_in_progress(), 100):
+        jobs = {}
+        for job in batch:
+            if job:
+                jobs[job.id] = job
 
-    r = gengo().getTranslationJobBatch(id=','.join(str(id) for id in jobs))
-    if r['response']:
-        for job_data in r['response']['jobs']:
-            job = jobs[int(job_data['job_id'])]
-            job.status = job_data['status']
-            job.source = job_data['body_src']
-            job.translation = job_data.get('body_tgt', '')
-            job.lang = job_data['lc_tgt']
-            if job.lang == 'no':
-                job.lang = 'nb'
-            job.save()
+        try:
+            r = gengo().getTranslationJobBatch(id=','.join(str(id) for id in jobs))
+        except ValueError:
+            print jobs.keys()
+            raise
+        if r['response']:
+            for job_data in r['response']['jobs']:
+                job = jobs[int(job_data['job_id'])]
+                job.status = job_data['status']
+                job.source = job_data['body_src']
+                job.translation = job_data.get('body_tgt', '')
+                job.lang = job_data['lc_tgt']
+                if job.lang == 'no':
+                    job.lang = 'nb'
+                job.save()
 
 
 def check_translation(job):
