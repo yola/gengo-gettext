@@ -301,21 +301,13 @@ def manual_review(job):
         print 'Comment: %(body)s  -- %(author)s %(ctime_date)s' % comment
 
     while True:
-        action = raw_input('Action? [A]pprove, '
-                           '[R]evise, [S]trip and Approve, S[k]ip: ')
+        action = raw_input('Action? [A]pprove, [R]evise, S[k]ip: ')
         action = action.lower().strip()
         if action == 'a' or action == '':
             approve(job)
             break
         elif action == 'r':
             revise(job)
-            break
-        if action == 's':
-            gengo().updateTranslationJob(id=job.id,
-                                         action={'action': 'approve'})
-            job.translation = job.translation.strip()
-            job.status = 'approved'
-            job.save()
             break
         elif action == 'k':
             break
