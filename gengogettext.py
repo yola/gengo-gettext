@@ -222,6 +222,11 @@ def update_statuses():
 
 def check_translation(job):
     passed = True
+
+    if not job.translation.strip():
+        print "Empty translation"
+        passed = False
+
     # Check that some strings, if present in the source, are present,
     # identically, in the translation
     for regex, message in (
