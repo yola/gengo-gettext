@@ -1,0 +1,5 @@
+gengo==0.1.13
+mock==1.0.1
+nose==1.3.1
+polib==1.0.4
+yoconfigurator==0.4.3
