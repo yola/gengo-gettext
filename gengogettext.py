@@ -227,7 +227,7 @@ def check_translation(job):
     # identically, in the translation
     for regex, message in (
         (r'<.*?>', 'HTML tags'),
-        (r'%(?:\([a-zA-Z0-9_]+\))?[#0 +-]?(?:[0-9*]+\$?)?\.?(?:[0-9]+\$?)?'
+        (r'%(?:\(\w+\))?[#0 +-]?(?:[0-9*]+\$?)?\.?(?:[0-9]+\$?)?'
          r'[diouxXeEfFgGcrs]',
          'Python interpolation'),
         (r'{[a-z0-9_]*(?:![rs])?'
