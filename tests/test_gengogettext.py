@@ -1,5 +1,7 @@
 # coding: utf-8
 import collections
+import contextlib
+import errno
 import os
 import unittest
 
@@ -8,8 +10,16 @@ from mock import patch
 import gengogettext
 
 
-class TestGengoGettext(unittest.TestCase):
+@contextlib.contextmanager
+def ignoring(exception, errno=None):
+    try:
+        yield
+    except exception as e:
+        if errno and e.errno != errno:
+            raise
 
+
+class TestGengoGettext(unittest.TestCase):
     def setUp(self):
         self.db_name = 'tests.db'
         self.args = {
@@ -17,12 +27,12 @@ class TestGengoGettext(unittest.TestCase):
             'verbose': True,
             'database': self.db_name
         }
-        os.path.exists(self.db_name) and os.remove(self.db_name)
+        with ignoring(OSError, errno.ENOENT):
+            os.remove(self.db_name)
 
     def tearDown(self):
-        if not os.path.exists(self.db_name):
-            return
-        os.remove(self.db_name)
+        with ignoring(OSError, errno.ENOENT):
+            os.remove(self.db_name)
 
     def test_runs_with_basic_args(self):
         gengogettext.main(**self.args)
