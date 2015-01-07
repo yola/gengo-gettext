@@ -37,8 +37,8 @@ class TestGengoGettext(unittest.TestCase):
     @patch('requests.api.request')
     def test_only_updates_jobs(self, request):
         gengogettext.main(**self.args)
-        self.assertEqual(request.call_count, 1)
-        called_url = request.call_args_list[0][0][1]
+        self.assertTrue(request.call_count)
+        called_url = request.call_args_list[1][0][1]
         self.assertIn('translate/jobs/', called_url)
 
 
