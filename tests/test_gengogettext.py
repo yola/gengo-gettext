@@ -34,9 +34,6 @@ class TestGengoGettext(unittest.TestCase):
         with ignoring(OSError, errno.ENOENT):
             os.remove(self.db_name)
 
-    def test_runs_with_basic_args(self):
-        gengogettext.main(**self.args)
-
     @patch('requests.api.request')
     def test_only_updates_jobs(self, request):
         gengogettext.main(**self.args)
