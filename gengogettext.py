@@ -3,6 +3,7 @@
 """Gengo gettext."""
 
 import argparse
+import cgi
 import ConfigParser
 import itertools
 import json
@@ -226,7 +227,8 @@ def check_translation(job):
     # identically, in the translation
     for regex, message in (
         (r'<.*?>', 'HTML tags'),
-        (r'%(?:\([a-zA-Z0-9_]+\))[#0 +-]?[0-9*]?\.?[0-9]?[diouxXeEfFgGcrs]',
+        (r'%(?:\(\w+\))?[#0 +-]?(?:[0-9*]+\$?)?\.?(?:[0-9]+\$?)?'
+         r'[diouxXeEfFgGcrs]',
          'Python interpolation'),
         (r'{[a-z0-9_]*(?:![rs])?'
          r'(?::(?:.?[<>=^])?[ +-]?#?0?[0-9]*,?(?:\.[0-9]+)?'
@@ -276,6 +278,9 @@ def approve(job):
 
 def revise(job):
     comment = raw_input('Comment: ')
+    # Gengo's UI doesn't handle HTML in comments, correctly.
+    comment = cgi.escape(comment)
+
     gengo().updateTranslationJob(id=job.id, action={
         'action': 'revise',
         'comment': comment,
