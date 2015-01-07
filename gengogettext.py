@@ -3,6 +3,7 @@
 """Gengo gettext."""
 
 import argparse
+import cgi
 import ConfigParser
 import itertools
 import json
@@ -276,6 +277,9 @@ def approve(job):
 
 def revise(job):
     comment = raw_input('Comment: ')
+    # Gengo's UI doesn't handle HTML in comments, correctly.
+    comment = cgi.escape(comment)
+
     gengo().updateTranslationJob(id=job.id, action={
         'action': 'revise',
         'comment': comment,
