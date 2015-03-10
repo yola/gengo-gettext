@@ -73,9 +73,14 @@ def check_entry(lang, entry):
         'tier': 'standard',
         'purpose': 'Web localization',
     }
-    if lang == 'nb':
+
+    job['lc_tgt'] = job['lc_tgt'].replace('_', '-').lower()
+    if job['lc_tgt'] == 'zh-cn':
+        job['lc_tgt'] = 'zh'
+    elif job['lc_tgt'] == 'nb':
         job['lc_tgt'] = 'no'
         job['comment'] += u'\nNorwegian Bokmål'
+
     if entry.msgstr:
         job['comment'] += ('\nFuzzy translation. Previous translation was:\n' +
                            entry.msgstr)
@@ -173,6 +178,8 @@ def update_db():
         lang = job_data['lc_tgt']
         if lang == 'no':
             lang = 'nb'
+        if lang == 'zh':
+            lang = 'zh_CN'
         job = Job(
             id=job_data['job_id'],
             order_id=job_data['order_id'],
@@ -213,6 +220,8 @@ def update_statuses():
             job.lang = job_data['lc_tgt']
             if job.lang == 'no':
                 job.lang = 'nb'
+            if job.lang == 'zh':
+                job.lang = 'zh_CN'
             fix_translation(job)
             job.save()
 
