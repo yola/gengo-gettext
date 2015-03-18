@@ -213,6 +213,7 @@ def update_statuses():
             job.lang = job_data['lc_tgt']
             if job.lang == 'no':
                 job.lang = 'nb'
+            fix_translation(job)
             job.save()
 
 
@@ -251,15 +252,12 @@ def fix_translation(job):
     translation = m.group(1) + job.translation.strip() + m.group(2)
     if translation != job.translation:
         job.translation = translation
-        job.save()
         return True
-
     return False
 
 
 def review():
     for job in list(Job.get_reviewable()):
-        fix_translation(job)
         auto_checks = check_translation(job)
 
         if auto_checks:
