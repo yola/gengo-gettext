@@ -136,3 +136,26 @@ class TestTranslationChecks(unittest.TestCase):
         self.assertFalse(self.check_translation(
             'House &amp; Garden',
             'Casa &amp； Giardino'))
+
+
+class TestLanguageMangling(unittest.TestCase):
+    def test_unmangled_locale_to_gengo(self):
+        self.assertEqual(gengogettext.locale_to_gengo_language('it'),
+                         ('it', None))
+
+    def test_unmangled_gengo_to_locale(self):
+        self.assertEqual(gengogettext.gengo_language_to_locale('it'), 'it')
+
+    def test_mangle_bokmal_to_gengo(self):
+        self.assertEqual(gengogettext.locale_to_gengo_language('nb'),
+                         ('no', u'Norwegian Bokmål'))
+
+    def test_mangle_bokmal_to_locale(self):
+        self.assertEqual(gengogettext.gengo_language_to_locale('no'), 'nb')
+
+    def test_mangle_chinese_to_gengo(self):
+        self.assertEqual(gengogettext.locale_to_gengo_language('zh_CN'),
+                         ('zh', u'Simplified Chinese'))
+
+    def test_mangle_chinese_to_locale(self):
+        self.assertEqual(gengogettext.gengo_language_to_locale('zh'), 'zh_CN')

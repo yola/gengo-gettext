@@ -23,6 +23,12 @@ from orm import Job, Order
 DEBUG = False
 MAX_COST = 100
 COMMENT = ''
+LANGMAP = {
+    # Our language to Gengo language + explanatory comment
+    'nb': ('no', u'Norwegian Bokmål'),
+    'zh-cn': ('zh', u'Simplified Chinese'),
+}
+REVERSE_LANGMAP = dict((value[0], key) for key, value in LANGMAP.iteritems())
 _gengo = None
 
 
@@ -42,6 +48,22 @@ def gengo():
 def po_file(locale_dir, lang, domain):
     """Return po path."""
     return os.path.join(locale_dir, lang, 'LC_MESSAGES', '%s.po' % domain)
+
+
+def locale_to_gengo_language(locale):
+    """
+    Return the Gengo language code, and an explanatory comment for a Unix
+    locale
+    """
+    locale = locale.replace('_', '-').lower()
+    return LANGMAP.get(locale, (locale, None))
+
+
+def gengo_language_to_locale(lang):
+    """Return the Unix locale equivalent to a Gengo language code"""
+    lang = REVERSE_LANGMAP.get(lang, lang)
+    parts = lang.partition('-')
+    return parts[0] + parts[1].replace('-', '_') + parts[2].upper()
 
 
 def check_entry(lang, entry):
@@ -74,12 +96,9 @@ def check_entry(lang, entry):
         'purpose': 'Web localization',
     }
 
-    job['lc_tgt'] = job['lc_tgt'].replace('_', '-').lower()
-    if job['lc_tgt'] == 'zh-cn':
-        job['lc_tgt'] = 'zh'
-    elif job['lc_tgt'] == 'nb':
-        job['lc_tgt'] = 'no'
-        job['comment'] += u'\nNorwegian Bokmål'
+    job['lc_tgt'], comment = locale_to_gengo_language(job['lc_tgt'])
+    if comment:
+        job['comment'] += u'\n' + comment
 
     if entry.msgstr:
         job['comment'] += ('\nFuzzy translation. Previous translation was:\n' +
@@ -175,11 +194,7 @@ def update_db():
     for job_data in r['response']['jobs']:
         if Job.get_where('id = ?', (job_data['job_id'],)):
             continue
-        lang = job_data['lc_tgt']
-        if lang == 'no':
-            lang = 'nb'
-        if lang == 'zh':
-            lang = 'zh_CN'
+        lang = gengo_language_to_locale(job_data['lc_tgt'])
         job = Job(
             id=job_data['job_id'],
             order_id=job_data['order_id'],
@@ -217,11 +232,7 @@ def update_statuses():
             job.status = job_data['status']
             job.source = job_data['body_src']
             job.translation = job_data.get('body_tgt', '')
-            job.lang = job_data['lc_tgt']
-            if job.lang == 'no':
-                job.lang = 'nb'
-            if job.lang == 'zh':
-                job.lang = 'zh_CN'
+            job.lang = gengo_language_to_locale(job_data['lc_tgt'])
             fix_translation(job)
             job.save()
 
