@@ -400,6 +400,7 @@ def main(**kwargs):
         if quote_jobs(jobs) > MAX_COST:
             print "Too expensive, aborting"
             sys.exit(1)
+        raw_input('OK?')
         post_jobs(jobs)
 
 
