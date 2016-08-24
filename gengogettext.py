@@ -238,32 +238,43 @@ def update_statuses():
 
 
 def check_translation(job):
-    passed = True
-
     if not job.translation.strip():
-        print "Empty translation"
-        passed = False
+        return 'empty translation'
 
+    problems = []
     # Check that some strings, if present in the source, are present,
     # identically, in the translation
     for regex, message in (
         (r'<.*?>', 'HTML tags'),
         (r'%(?:\(\w+\))?[#0 +-]?(?:[0-9*]+\$?)?\.?(?:[0-9]+\$?)?'
          r'[diouxXeEfFgGcrs]',
-         'Python interpolation'),
+         '%(first_missing)s is a substitution. '
+         'It will be replaced with something, '
+         'when the program displays this message. So, it must appear, '
+         'verbatim, in the translation, where you want the same substitution '
+         'to happen.'),
         (r'{[a-z0-9_]*(?:![rs])?'
          r'(?::(?:.?[<>=^])?[ +-]?#?0?[0-9]*,?(?:\.[0-9]+)?'
          r'[bcdeEfFgGnosxX%]?)?}', 'Python format string'),
         (r'%%', 'Escaped percent symbol'),
-        (r'&[a-z]+;', 'HTML entity'),
+        (r'&[a-z]+;',
+         '%(first_missing)s is a an HTML entity (i.e. a special symbol, or '
+         'punctuation) See: https://en.wikipedia.org/wiki/HTML_Entity '),
+        (r'##.*?##', 'Yola site template substitution'),
+        (r'\{\{.*?\}\}', 'Handlebars substitution'),
     ):
         source_matches = set(re.findall(regex, job.source))
         translation_matches = set(re.findall(regex, job.translation))
         if source_matches != translation_matches:
-            print "Differing %s" % message
-            passed = False
+            missing = source_matches - translation_matches
+            problems.append(message % {
+                'first_missing': list(missing)[0] if missing else '',
+            })
 
-    return passed
+    if not problems:
+        return None
+    return ('We detected some problems with this translation: %s'
+            % ', '.join(problems))
 
 
 def fix_translation(job):
@@ -280,10 +291,10 @@ def review():
     for job in list(Job.get_reviewable()):
         auto_checks = check_translation(job)
 
-        if auto_checks:
+        if auto_checks is None:
             approve(job)
         else:
-            manual_review(job)
+            manual_review(job, auto_checks)
 
 
 def approve(job):
@@ -294,8 +305,10 @@ def approve(job):
         print e
 
 
-def revise(job):
-    comment = raw_input('Comment: ')
+def revise(job, comment=None):
+    if not comment:
+        comment = raw_input('Comment: ')
+
     # Gengo's UI doesn't handle HTML in comments, correctly.
     comment = cgi.escape(comment)
 
@@ -305,23 +318,30 @@ def revise(job):
     })
 
 
-def manual_review(job):
+def manual_review(job, message):
     print '\nReview reviewable translation:', job.id
     print '===== en ====='
     print job.source
     print '===== %s =====' % job.lang
     print job.translation
     print '=============='
+    print message
+    print '=============='
     r = gengo().getTranslationJobComments(id=job.id)
-    for comment in r['response']['thread'][1:]:
-        comment['ctime_date'] = time.strftime(
-            '%Y-%m-%d %H:%M:%S UTC', time.gmtime(comment['ctime']))
-        print 'Comment: %(body)s  -- %(author)s %(ctime_date)s' % comment
+    thread = r['response']['thread']
+    if thread:
+        for comment in thread[1:]:
+            comment['ctime_date'] = time.strftime(
+                '%Y-%m-%d %H:%M:%S UTC', time.gmtime(comment['ctime']))
+            print 'Comment: %(body)s  -- %(author)s %(ctime_date)s' % comment
 
     while True:
         action = raw_input('Action? [A]pprove, [R]evise, S[k]ip: ')
         action = action.lower().strip()
-        if action == 'a' or action == '':
+        if action == '':
+            revise(job, message)
+            break
+        elif action == 'a':
             approve(job)
             break
         elif action == 'r':
