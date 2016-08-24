@@ -92,7 +92,7 @@ def check_entry(lang, entry):
         'comment': COMMENT,
         'lc_src': 'en',
         'lc_tgt': lang,
-        'tier': 'standard',
+        'tier': 'pro',
         'purpose': 'Web localization',
     }
 
