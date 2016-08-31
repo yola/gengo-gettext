@@ -11,5 +11,6 @@
 __pycache__
 nosetests.xml
 /configuration.json
+/projects.ini
 /virtualenv/
 /virtualenv.tar.gz
