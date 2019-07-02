@@ -1,7 +1,7 @@
 Gengo Gettext
 =============
 
-Create Gengo translation jobs using a gettext catalog.
+Create Gengo translation jobs using a gettext catalog or JSON files.
 
 ## Getting Started
 
