@@ -12,6 +12,7 @@ import os
 import re
 import sys
 import time
+from decimal import Decimal
 
 from gengo import Gengo, GengoError
 import polib
@@ -147,7 +148,7 @@ def quote_jobs(jobs):
     credits = 0
     for job in r['response']['jobs']:
         currency = job['currency']
-        credits += float(job['credits'])
+        credits += Decimal(job['credits'])
     print 'Cost: %s %0.2f' % (currency, credits)
     return credits
 
