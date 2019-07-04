@@ -79,8 +79,6 @@ def check_entry(lang, entry, edit_jobs):
     # Translation in progress
     job = Job.find(lang, entry.msgid)
     if job:
-        if DEBUG:
-            print 'Skipping...'
         if job.status == 'approved':
             entry.msgstr = job.translation
             if 'fuzzy' in entry.flags:
@@ -123,7 +121,7 @@ def walk_po_file(locale_dir, lang, domain, edit_jobs):
         return
     po = polib.pofile(filename)
     updated = False
-    print 'Creating jobs',
+    print 'Creating jobs for {} locale'.format(lang),
     sys.stdout.flush()
     for entry in po:
         if entry.obsolete:
@@ -137,6 +135,7 @@ def walk_po_file(locale_dir, lang, domain, edit_jobs):
             sys.stdout.write('.')
             sys.stdout.flush()
     if updated:
+        print '\nSaving approved messages'
         po.save()
     print
 
@@ -380,7 +379,7 @@ def walk_json_file(source_messages, language, locale_dir, edit_jobs):
     if DEBUG:
         print 'Processing %s' % filename
     translations = open_or_create_json_file(filename)
-    print 'Creating jobs',
+    sys.stdout.write('Creating jobs for "{}" locale'.format(language))
     sys.stdout.flush()
 
     for message in source_messages:
@@ -398,6 +397,7 @@ def walk_json_file(source_messages, language, locale_dir, edit_jobs):
         sys.stdout.write('.')
         sys.stdout.flush()
     if updated:
+        print '\nSaving approved messages'
         write_json_file(filename, translations)
     print
 
@@ -464,6 +464,7 @@ def main(**kwargs):
 
     jobs = []
     for project in projects:
+        print '\nProcessing "{}" project'.format(project)
         languages = args.languages or config.get(project, 'languages').split()
         edit_jobs = config.getboolean(project, 'edit_jobs')
         try:
@@ -483,6 +484,7 @@ def main(**kwargs):
                     )
 
     if DEBUG:
+        print '{} new jobs'.format(len(jobs))
         print json.dumps(jobs, indent=2)
     if jobs:
         if quote_jobs(jobs) > MAX_COST:
