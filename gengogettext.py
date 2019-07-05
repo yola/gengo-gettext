@@ -5,12 +5,14 @@
 import argparse
 import cgi
 import ConfigParser
+import io
 import itertools
 import json
 import os
 import re
 import sys
 import time
+from decimal import Decimal
 
 from gengo import Gengo, GengoError
 import polib
@@ -66,7 +68,7 @@ def gengo_language_to_locale(lang):
     return parts[0] + parts[1].replace('-', '_') + parts[2].upper()
 
 
-def check_entry(lang, entry):
+def check_entry(lang, entry, edit_jobs):
     """
     Check a POEntry. Return a job if one needs to be created.
     Update if there's a translation in our DB
@@ -78,8 +80,6 @@ def check_entry(lang, entry):
     # Translation in progress
     job = Job.find(lang, entry.msgid)
     if job:
-        if DEBUG:
-            print 'Skipping...'
         if job.status == 'approved':
             entry.msgstr = job.translation
             if 'fuzzy' in entry.flags:
@@ -87,26 +87,32 @@ def check_entry(lang, entry):
             return 'updated', None
         return 'waiting', None
 
-    job = {
-        'body_src': entry.msgid,
-        'comment': COMMENT,
-        'lc_src': 'en',
-        'lc_tgt': lang,
-        'tier': 'pro',
-        'purpose': 'Web localization',
-    }
-
-    job['lc_tgt'], comment = locale_to_gengo_language(job['lc_tgt'])
-    if comment:
-        job['comment'] += u'\n' + comment
-
+    job = get_job_data(entry.msgid, lang, edit_jobs)
     if entry.msgstr:
         job['comment'] += ('\nFuzzy translation. Previous translation was:\n' +
                            entry.msgstr)
     return 'job', job
 
 
-def walk_po_file(locale_dir, lang, domain):
+def get_job_data(message, target_language, edit_jobs):
+    job = {
+        'body_src': message,
+        'comment': COMMENT,
+        'lc_src': 'en',
+        'lc_tgt': target_language,
+        'tier': 'pro',
+        'purpose': 'Web localization',
+    }
+    if edit_jobs:
+        job['services'] = ['translation', 'edit']
+
+    job['lc_tgt'], comment = locale_to_gengo_language(job['lc_tgt'])
+    if comment:
+        job['comment'] += u'\n' + comment
+    return job
+
+
+def walk_po_file(locale_dir, lang, domain, edit_jobs):
     """Walk through a po file and yield any jobs that need to be submitted"""
     filename = po_file(locale_dir, lang, domain)
     if DEBUG:
@@ -116,19 +122,21 @@ def walk_po_file(locale_dir, lang, domain):
         return
     po = polib.pofile(filename)
     updated = False
-    print 'Creating jobs',
+    print 'Creating jobs for {} locale'.format(lang),
     sys.stdout.flush()
     for entry in po:
         if entry.obsolete:
             continue
-        action, job = check_entry(lang, entry)
+        action, job = check_entry(lang, entry, edit_jobs)
         if job:
             yield job
         if action == 'updated':
             updated = True
-        sys.stdout.write('.')
-        sys.stdout.flush()
+        if action == 'job':
+            sys.stdout.write('.')
+            sys.stdout.flush()
     if updated:
+        print '\nSaving approved messages'
         po.save()
     print
 
@@ -140,7 +148,7 @@ def quote_jobs(jobs):
     credits = 0
     for job in r['response']['jobs']:
         currency = job['currency']
-        credits += job['credits']
+        credits += Decimal(job['credits'])
     print 'Cost: %s %0.2f' % (currency, credits)
     return credits
 
@@ -192,6 +200,8 @@ def update_db():
 
     orders = {}
     for job_data in r['response']['jobs']:
+        if job_data['status'] == 'deleted':
+            continue
         if Job.get_where('id = ?', (job_data['job_id'],)):
             continue
         lang = gengo_language_to_locale(job_data['lc_tgt'])
@@ -351,6 +361,73 @@ def manual_review(job, message):
             break
 
 
+def walk_json_files(locale_dir, languages, edit_jobs):
+    jobs = []
+    with open(os.path.join(locale_dir, 'en.json')) as f:
+        source_messages = json.load(f)
+
+    for language in languages:
+        jobs.extend(
+            walk_json_file(source_messages, language, locale_dir, edit_jobs)
+        )
+
+    return jobs
+
+
+def walk_json_file(source_messages, language, locale_dir, edit_jobs):
+    updated = False
+    filename = os.path.join(locale_dir, '{}.json'.format(language))
+    if DEBUG:
+        print 'Processing %s' % filename
+    translations = open_or_create_json_file(filename)
+    sys.stdout.write('Creating jobs for "{}" locale'.format(language))
+    sys.stdout.flush()
+
+    for message in source_messages:
+        if message in translations:
+            continue
+
+        job = Job.find(language, message)
+        if job:
+            if job.status == 'approved':
+                translations[message] = job.translation
+                updated = True
+            continue
+
+        yield get_job_data(message, language, edit_jobs)
+        sys.stdout.write('.')
+        sys.stdout.flush()
+    if updated:
+        print '\nSaving approved messages'
+        write_json_file(filename, translations)
+    print
+
+
+def open_or_create_json_file(filename):
+    json_data = {}
+    try:
+        with open(filename, 'r') as f:
+            json_data = json.load(f)
+    except IOError:
+        print 'Missing JSON file: %s. Creating a new file.' % filename
+        with open(filename, 'w') as f:
+            json.dump(json_data, f)
+    return json_data
+
+
+def write_json_file(filename, json_data):
+    with io.open(filename, mode='w', encoding='utf-8') as f:
+        json_data = json.dumps(
+            json_data,
+            f,
+            sort_keys=True,
+            indent=2,
+            ensure_ascii=False,
+            separators=(',', ': '),  # removes trailing space
+        )
+        f.write(unicode(json_data))
+
+
 def main(**kwargs):
     global DEBUG, MAX_CONT, COMMENT, DB_NAME
     p = argparse.ArgumentParser()
@@ -388,13 +465,27 @@ def main(**kwargs):
 
     jobs = []
     for project in projects:
+        print '\nProcessing "{}" project'.format(project)
         languages = args.languages or config.get(project, 'languages').split()
-        for domain in config.get(project, 'domains').split():
-            basedir = config.get(project, domain)
-            for language in languages:
-                jobs.extend(walk_po_file(basedir, language, domain))
+        edit_jobs = config.getboolean(project, 'edit_jobs')
+        try:
+            locale_dir = config.get(project, 'locale_dir')
+        except ConfigParser.NoOptionError:
+            locale_dir = None
+
+        if locale_dir:
+            # process newer projects with JSON based translations
+            jobs.extend(walk_json_files(locale_dir, languages, edit_jobs))
+        else:
+            for domain in config.get(project, 'domains').split():
+                basedir = config.get(project, domain)
+                for language in languages:
+                    jobs.extend(
+                        walk_po_file(basedir, language, domain, edit_jobs)
+                    )
 
     if DEBUG:
+        print '{} new jobs'.format(len(jobs))
         print json.dumps(jobs, indent=2)
     if jobs:
         if quote_jobs(jobs) > MAX_COST:
