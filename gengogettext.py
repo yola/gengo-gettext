@@ -170,7 +170,12 @@ def post_jobs(jobs):
             break
         time.sleep(1)
 
-    for job in r['response']['order']['jobs_available']:
+    jobs_to_be_saved = (
+        r['response']['order']['jobs_available'] +
+        # messages translated in the scope of older orders
+        r['response']['order']['jobs_approved']
+    )
+    for job in jobs_to_be_saved:
         Job(
             id=job,
             order_id=order_id,
@@ -194,9 +199,9 @@ def update_db():
                                        count=200)
 
     job_ids = [job['job_id'] for job in r['response']]
-    r = gengo().getTranslationJobBatch(id=','.join(job for job in job_ids))
-    if not r['response']:
+    if not job_ids:
         return
+    r = gengo().getTranslationJobBatch(id=','.join(job for job in job_ids))
 
     orders = {}
     for job_data in r['response']['jobs']:
@@ -468,6 +473,8 @@ def main(**kwargs):
         print '\nProcessing "{}" project'.format(project)
         languages = args.languages or config.get(project, 'languages').split()
         edit_jobs = config.getboolean(project, 'edit_jobs')
+        if edit_jobs:
+            print 'Jobs will be ordered with "Editing Service"'
         try:
             locale_dir = config.get(project, 'locale_dir')
         except ConfigParser.NoOptionError:
