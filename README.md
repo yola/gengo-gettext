@@ -6,8 +6,10 @@ Create Gengo translation jobs using a gettext catalog or JSON files.
 ## Getting Started
 
 * Install `requirements.txt`, requires python 2.7
+  * `build-virtualenv`
+  * `. virtualenv/bin/activate`
 * Create a `configuration.json`
-  * configure against `production` to place orders
+  * configure against `production` to place orders (`configurator gengo-gettext production -l`)
   * any other env will use gengo's sandbox
 * Configure projects
   * `cp projects.sample.ini projects.ini`
@@ -23,7 +25,7 @@ Every project, no matter which i18n approach it uses, can be configured with the
 
 Configuration options required by gettext projects:
 * `domains` - (_string_) a list of gettext domains separated by space
-* `<domain-name>` - (_string_) a directory path where .po file for given domain is stored
+* `<domain-name>` - (_string_) an absolute directory path where .po file for given domain is stored
 
 Configuration option required by projects with JSON i18n approach:
-* `locale_dir` - (_string_) a directory path where JSON files with source strings and translations are stored
+* `locale_dir` - (_string_) an absolute directory path where JSON files with source strings and translations are stored
